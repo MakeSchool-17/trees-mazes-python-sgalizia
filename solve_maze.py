@@ -31,6 +31,7 @@ def main(solver='dfs'):
         maze.check_for_exit()
     return
 
+
 if __name__ == '__main__':
     if len(sys.argv) > 1:
         main(sys.argv[1])
