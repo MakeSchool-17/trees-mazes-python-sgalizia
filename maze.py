@@ -12,12 +12,12 @@ CELL_SIZE = 32
 # From left to right, each 4 bit cluster represents W, S, E, N
 # NOTE: Border bits are not currently used
 #                   directions
-#                WSENWSENWSENWSEN
-DEFAULT_CELL = 0b0000000000000000
-#                |bt||s ||b ||w |
-WALL_BITS = 0b0000000000001111
+#                  WSENWSENWSENWSEN
+DEFAULT_CELL   = 0b0000000000000000
+#                  |bt||s ||b ||w |
+WALL_BITS      = 0b0000000000001111
 BACKTRACK_BITS = 0b1111000000000000
-SOLUTION_BITS = 0b0000111100000000
+SOLUTION_BITS  = 0b0000111100000000
 
 # Indices match each other
 # WALLS[i] corresponds with COMPASS[i], DIRECTION[i], and OPPOSITE_WALLS[i]
@@ -60,14 +60,23 @@ class Maze:
         # Logic for getting neighbors based on self.state
         x, y = self.x_y(cell)
         neighbors = []
-        for i in range(4):
-            new_x = x + COMPASS[i][0]
-            new_y = y + COMPASS[i][1]
+
+        for direction in range(4):
+            new_x = x + COMPASS[direction][0]
+            new_y = y + COMPASS[direction][1]
             if self.cell_in_bounds(new_x, new_y):
                 new_cell = self.cell_index(new_x, new_y)
+                new_cell_bits = self.maze_array[new_cell]
                 if self.state == 'create':
-                    if not (self.maze_array[new_cell] & WALL_BITS):
-                        neighbors.append((new_cell, i))
+                    walls_up = new_cell_bits & WALL_BITS
+                    # Check that the walls are not 'up' yet
+                    if not walls_up:
+                        neighbors.append((new_cell, direction))
+                if self.state == 'solve':
+                    # Check that the intended path is clear, walls down
+                    if self.maze_array[cell] & WALLS[direction]:
+                        if not new_cell_bits & (SOLUTION_BITS | BACKTRACK_BITS):
+                            neighbors.append((new_cell, direction))
         return neighbors
 
     # Connect two cells by knocking down the wall between them
@@ -81,25 +90,44 @@ class Maze:
     # Visit a cell along a possible solution path
     # Update solution bits of from_cell and backtrack bits of to_cell
     def visit_cell(self, from_cell, to_cell, compass_index):
-        # TODO: Logic for updating cell bits
+        # Clear out solution bits and then set them to the current
+        # direction (compass_index).
+        self.maze_array[from_cell] &= ~SOLUTION_BITS
+        self.maze_array[from_cell] |= (WALLS[compass_index] << 8)
+        self.maze_array[to_cell] |= (OPPOSITE_WALLS[compass_index] << 12)
         self.draw_visited_cell(from_cell)
 
     # Backtrack from cell
     # Blank out the solution bits so it is no longer on the solution path
     def backtrack(self, cell):
-        # TODO: Logic for updating cell bits
+        # Logic for updating cell bits
+        self.maze_array[cell] &= ~SOLUTION_BITS
         self.draw_backtracked_cell(cell)
 
     # Visit cell in BFS search
     # Update backtrack bits for use in reconstruct_solution
     def bfs_visit_cell(self, cell, from_compass_index):
-        # TODO: Logic for updating cell bits
+        self.maze_array[cell] |= (OPPOSITE_WALLS[from_compass_index] << 12)
         self.draw_bfs_visited_cell(cell)
 
     # Reconstruct path to start using backtrack bits
     def reconstruct_solution(self, cell):
         self.draw_visited_cell(cell)
-        # TODO: Logic for reconstructing solution path in BFS
+        prev_cell_bits = self.maze_array[cell] >> 12
+
+        i = WALLS.index(prev_cell_bits)
+        cur_x, cur_y = self.x_y(cell)
+        prev_x = cur_x + COMPASS[i][0]
+        prev_y = cur_y + COMPASS[i][1]
+
+        prev_index = self.cell_index(prev_x, prev_y)
+        self.maze_array[prev_index] |= (OPPOSITE_WALLS[i] << 8)
+        self.refresh_maze_view()
+        if prev_index != 0:
+            self.reconstruct_solution(prev_index)
+        elif prev_index == 0:
+            self.draw_visited_cell(prev_index)
+            self.refresh_maze_view()
 
     # Check if x, y values of cell are within bounds of maze
     def cell_in_bounds(self, x, y):
